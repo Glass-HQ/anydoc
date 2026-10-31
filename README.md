@@ -4,7 +4,7 @@ Parse any file to Markdown and show it in your app. One package for the browser:
 
 Parsing is [Firecrawl's anydoc](https://github.com/firecrawl/anydoc), a fast Rust converter, compiled to WebAssembly and kept in sync with upstream. Rendering, the format registry and the viewer are this fork's.
 
-**[Try the playground](https://glass-hq.github.io/anydoc/)**: drop in a file to see it rendered and as Markdown. It all runs in your browser; files never leave your machine.
+**[Try the playground](https://glass-hq.github.io/documents/)**: drop in a file to see it rendered and as Markdown. It all runs in your browser; files never leave your machine.
 
 ```bash
 npm install @glass-hq/documents

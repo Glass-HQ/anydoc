@@ -11,4 +11,4 @@ const viewer = createViewer(element, file); // headless: draw your own controls 
 
 React: `useDocumentViewer` and `<DocumentView>` from `@glass-hq/documents/react`.
 
-Formats, options, theming and the security model are in the [repository's README](https://github.com/Glass-HQ/anydoc#readme).
+Formats, options, theming and the security model are in the [repository's README](https://github.com/Glass-HQ/documents#readme).
