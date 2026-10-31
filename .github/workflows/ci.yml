@@ -14,18 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  viewers:
-    name: Viewer packages
-    runs-on: ubuntu-latest
+  documents:
+    name: Documents package
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Expose the Changesets base branch
-        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-        run: git branch --force main origin/main
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.9.0
       - uses: actions/setup-node@v7
@@ -37,25 +31,17 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
-          key: spreadsheet-wasm
+          key: documents-wasm
       - name: Install wasm-pack
         run: >
-          curl -sSfL https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz
-          | tar xz --strip-components=1 -C /usr/local/bin wasm-pack-v0.15.0-x86_64-unknown-linux-musl/wasm-pack
+          curl -sSfL https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.1/wasm-pack-v0.15.1-x86_64-unknown-linux-musl.tar.gz
+          | tar xz --strip-components=1 -C /usr/local/bin wasm-pack-v0.15.1-x86_64-unknown-linux-musl/wasm-pack
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run release:metadata
-      - name: Require release intent for changed viewer packages
-        if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'changeset-release/')
-        run: pnpm run release:status
-      # Build workspace packages first so subpath declarations resolve
-      # exactly as they will for registry consumers.
-      - run: pnpm run build:viewers
-      - run: pnpm run typecheck:viewers
-      - run: pnpm run test:viewers
-      - run: pnpm run budget:viewers
-      - run: pnpm run pack:check
-      - run: pnpm run closure:server
-      - run: pnpm run closure:viewer
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: node scripts/format-table.mjs --check
+      - run: pnpm --dir wasm/www build
 
   rust:
     name: Rust
@@ -133,6 +119,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - run: python -m pip install --no-cache-dir -r .github/pip-bootstrap.txt
       - run: pip install maturin
       - run: maturin build --release --locked --manifest-path python/Cargo.toml --out dist
       - run: pip install --no-index --find-links dist firecrawl-anydoc

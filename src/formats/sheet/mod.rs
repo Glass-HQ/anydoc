@@ -3,8 +3,12 @@
 //! OLE-based BIFF (xls). All three share the number format engine and grid
 //! assembly, so one workbook saved in any of them converts identically.
 
+mod assemble;
 mod controls;
+mod drawings;
 mod numfmt;
+mod rules;
+mod styles;
 mod xls;
 mod xlsb;
 mod xlsx;
@@ -14,8 +18,18 @@ use crate::model::Document;
 use crate::package::archive::probe_ole;
 use crate::package::relationships::{read_rels, rel_type};
 use crate::package::{Package, path};
+use crate::workbook::Workbook;
 
 pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
+    read(bytes, false)?.into_document()
+}
+
+/// The workbook as the viewer draws it, from the same read as [`parse`].
+pub fn workbook(bytes: &[u8]) -> Result<Workbook, ConvertError> {
+    read(bytes, true)?.into_workbook()
+}
+
+fn read(bytes: &[u8], view: bool) -> Result<assemble::ReadWorkbook, ConvertError> {
     const OLE_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     if bytes.starts_with(&OLE_MAGIC) {
         // An encrypted OOXML package is an OLE container carrying no BIFF
@@ -23,7 +37,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         // for one.
         return match probe_ole(bytes) {
             Some(e @ ConvertError::Encrypted) => Err(e),
-            _ => xls::parse(bytes),
+            _ => xls::read(bytes),
         };
     }
     // Failing to open as a ZIP means not a workbook; a resource limit
@@ -37,8 +51,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         return Err(not_a_workbook());
     };
     match classify(&mut pkg, &wb_part)? {
-        Some(Container::Xml) => xlsx::parse(&mut pkg, &wb_part),
-        Some(Container::Bin) => xlsb::parse(&mut pkg, &wb_part),
+        Some(Container::Xml) => xlsx::read(&mut pkg, &wb_part, view),
+        Some(Container::Bin) => xlsb::read(&mut pkg, &wb_part),
         None => Err(not_a_workbook()),
     }
 }

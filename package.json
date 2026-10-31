@@ -1,10 +1,10 @@
 {
-  "name": "anydoc-platform-workspace",
+  "name": "documents-workspace",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BaseBlocks-HQ/anydoc.git"
+    "url": "https://github.com/Glass-HQ/documents.git"
   },
   "type": "module",
   "packageManager": "pnpm@11.9.0",
@@ -12,25 +12,10 @@
     "node": ">=22.11.0"
   },
   "scripts": {
-    "changeset": "changeset",
-    "dev:playground": "pnpm --dir apps/playground dev",
-    "build:viewers": "pnpm --recursive --if-present build",
-    "test:viewers": "pnpm --recursive --if-present test",
-    "typecheck:viewers": "pnpm --recursive --if-present typecheck",
-    "pack:check": "node scripts/pack-viewers.mjs --dry-run",
-    "pack:release": "node scripts/pack-viewer-release.mjs",
-    "budget:viewers": "node scripts/check-viewer-budgets.mjs",
-    "closure:server": "node scripts/verify-server-closure.mjs",
-    "release:metadata": "node scripts/validate-viewer-releases.mjs",
-    "release:status": "changeset status --since main",
-    "release:validate": "pnpm release:metadata && pnpm release:status",
-    "release:plan": "changeset publish-plan",
-    "version:viewers": "pnpm release:metadata && changeset version",
-    "closure:viewer": "node scripts/verify-packed-viewer.mjs"
+    "build": "pnpm --dir packages/documents build",
+    "typecheck": "pnpm --dir packages/documents typecheck",
+    "test": "pnpm --dir packages/documents test",
+    "dev:playground": "pnpm --dir wasm/www dev"
   },
-  "devDependencies": {
-    "@changesets/cli": "3.0.0",
-    "typescript": "5.9.3",
-    "vitest": "3.2.6"
-  }
+  "devDependencies": {}
 }

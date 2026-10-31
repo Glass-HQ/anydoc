@@ -21,3 +21,8 @@ __pycache__/
 /fuzz/corpus/
 /fuzz/artifacts/
 /fuzz/coverage/
+# Built from the Rust core by scripts/build-core-wasm.mjs
+/packages/documents/src/core/wasm/
+/packages/documents/src/core/wasm-pdf/
+node_modules/
+/wasm/www/dist/

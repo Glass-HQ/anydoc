@@ -1,0 +1,15 @@
+Documents in this repository is maintained by Glass-HQ and built on Firecrawl's anydoc.
+
+Upstream project: https://github.com/firecrawl/anydoc
+Original fork point: v0.1.7 (commit 4a45addbd607e8b59f0c263bca26aab228e10370)
+
+The document parsing and Markdown conversion core originated in the upstream
+project and remains copyright Sideguide Technologies Inc. Glass-HQ's
+ingestion, platform, renderer, viewer, and other modifications are copyright
+their respective contributors. The upstream work and the fork's modifications
+are distributed under the MIT License included in LICENSE.
+
+The Git history before the fork point is retained in this repository.
+
+Dependency licenses are published by each dependency and must be audited before a
+binary or bundled viewer release.
