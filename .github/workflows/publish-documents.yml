@@ -1,0 +1,42 @@
+# Publishes @glass-hq/documents when a `documents-v<version>` tag is pushed.
+# The tag must match the version in packages/documents/package.json. Upstream's
+# release.yml only reacts to `v*` tags, so the two never trigger each other.
+name: Publish documents
+
+on:
+  push:
+    tags: ["documents-v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: >
+          curl -sSfL https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.1/wasm-pack-v0.15.1-x86_64-unknown-linux-musl.tar.gz
+          | tar xz --strip-components=1 -C /usr/local/bin wasm-pack-v0.15.1-x86_64-unknown-linux-musl/wasm-pack
+      - name: Check the tag matches the package version
+        run: test "documents-v$(node -p "require('./packages/documents/package.json').version")" = "$GITHUB_REF_NAME"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+      # Trusted publishing: npm verifies this workflow through OIDC, so no token is stored.
+      - run: npm publish --provenance --access public
+        working-directory: packages/documents

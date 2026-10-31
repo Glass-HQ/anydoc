@@ -6,6 +6,7 @@ mod doc;
 mod docx;
 mod epub;
 mod odf;
+#[cfg(feature = "pdf")]
 pub mod pdf;
 mod ppt;
 mod pptx;
@@ -15,6 +16,15 @@ mod sheet;
 use crate::Format;
 use crate::error::ConvertError;
 use crate::model::Document;
+use crate::workbook::{self, Workbook};
+
+pub fn workbook(bytes: &[u8], format: Format) -> Result<Workbook, ConvertError> {
+    match format {
+        Format::Excel => sheet::workbook(bytes),
+        Format::Csv | Format::Ods => Ok(workbook::from_document(&parse(bytes, format)?)),
+        _ => Err(ConvertError::Unsupported(format!("{format:?} is not a spreadsheet"))),
+    }
+}
 
 pub fn parse(bytes: &[u8], format: Format) -> Result<Document, ConvertError> {
     match format {

@@ -1,5 +1,5 @@
 [workspace]
-members = ["node", "python", "wasm", "spreadsheet-view"]
+members = ["node", "python", "wasm"]
 # cargo-fuzz keeps its own lockfile and nightly-only dependencies.
 exclude = ["fuzz"]
 
@@ -27,9 +27,15 @@ csv = "1.4.0"
 flate2 = "1"
 encoding_rs = "0.8.35"
 log = "0.4"
-pdf-inspector = "1.14.2"
+pdf-inspector = { version = "1.14.2", optional = true }
 quick-xml = "0.41.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+[features]
+default = ["pdf"]
+# PDF to Markdown through pdf-inspector, by far the largest dependency. Without
+# it every other format still converts, and PDFs report `Unsupported`.
+pdf = ["dep:pdf-inspector"]
 
 [profile.release]
 lto = "thin"

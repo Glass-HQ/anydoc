@@ -4,9 +4,7 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
-      - '!viewer-v*'
+    tags: ['v*']
   # Manual dispatch is a dry run: everything builds and tests, publish steps
   # run in their respective dry-run modes and nothing reaches a registry.
   workflow_dispatch:
