@@ -5,7 +5,8 @@ import { cssZoom } from "../zoom.js";
 /** The browser's own players and image decoder, fed from memory. */
 function mediaElement(context: RenderContext, tag: "img" | "video" | "audio"): Renderer {
   const { element, bytes, name } = context;
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mediaType(context) }));
+  const owned = context.url === undefined;
+  const url = context.url ?? URL.createObjectURL(new Blob([bytes as BlobPart], { type: mediaType(context) }));
   const wrapper = element.ownerDocument.createElement("div");
   wrapper.className = "documents-center";
   const media = element.ownerDocument.createElement(tag);
@@ -30,7 +31,7 @@ function mediaElement(context: RenderContext, tag: "img" | "video" | "audio"): R
     ...(tag === "img" ? { zoom: cssZoom(media, 0.1, 10) } : {}),
     destroy: () => {
       element.replaceChildren();
-      URL.revokeObjectURL(url);
+      if (owned) URL.revokeObjectURL(url);
     },
   };
 }

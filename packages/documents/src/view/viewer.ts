@@ -1,5 +1,5 @@
 import { DocumentError } from "../core/errors.js";
-import { formats, type RenderMethod } from "../core/formats.js";
+import { formatFromName, formats, type RenderMethod } from "../core/formats.js";
 import { openDocument, type OpenOptions } from "../core/parse.js";
 import type { DocumentSource } from "../core/source.js";
 import type { RenderFunction, Renderer } from "./renderer.js";
@@ -9,9 +9,10 @@ import { installStyles } from "./styles.js";
 export interface ViewerOptions extends OpenOptions {
   /**
    * Draws text and code with syntax highlighting. Gets the text and the file
-   * name, returns the element to show. Without one, text shows plain.
+   * name, returns the element to show, or the element and how to release it.
+   * Without one, text shows plain.
    */
-  readonly highlight?: ((text: string, name: string | undefined) => HTMLElement | Promise<HTMLElement>) | undefined;
+  readonly highlight?: ((text: string, name: string | undefined) => Highlighted | Promise<Highlighted>) | undefined;
   /**
    * Called when someone follows an external link in the document. The viewer
    * never navigates on its own; without this, links do nothing.
@@ -20,6 +21,8 @@ export interface ViewerOptions extends OpenOptions {
   /** Where pdf.js's worker script is served from, if your bundler doesn't resolve it. */
   readonly pdfWorker?: string | URL | undefined;
 }
+
+export type Highlighted = HTMLElement | { readonly element: HTMLElement; readonly destroy: () => void };
 
 /** A document shown in an element, with everything its controls need. */
 export interface DocumentViewer {
@@ -63,6 +66,20 @@ const renderers: Record<RenderMethod, () => Promise<{ readonly render: RenderFun
   binary: () => import("./renderers/binary.js"),
 };
 
+const streamedRenderers = new Set<RenderMethod>(["image", "video", "audio"]);
+
+/** A URL source whose name or format says it's media, so it can stream instead of being read. */
+function streamable(source: DocumentSource, options: ViewerOptions) {
+  const target = typeof source === "string" || source instanceof URL ? source : typeof source === "object" && "url" in source && !("init" in source && source.init) ? source.url : undefined;
+  if (target === undefined) return undefined;
+  const url = new URL(target, globalThis.location?.href);
+  if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "blob:") return undefined;
+  const name = options.name ?? decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+  const format = options.format ?? formatFromName(name);
+  if (!format || !streamedRenderers.has(formats[format].render)) return undefined;
+  return { bytes: new Uint8Array(), format, name, url: url.href };
+}
+
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 
 /**
@@ -79,7 +96,9 @@ export function createViewer(element: HTMLElement, source: DocumentSource, optio
   element.dataset.documentsViewer = "";
 
   void (async () => {
-    const opened = await openDocument(source, { ...options, signal });
+    // Media at a URL streams into the browser's own players instead of being read into memory first.
+    const streamed = streamable(source, options);
+    const opened = streamed ?? (await openDocument(source, { ...options, signal }));
     store.set({ format: opened.format });
     element.dataset.documentsViewer = opened.format;
     const { render } = await renderers[formats[opened.format].render]();
@@ -90,6 +109,7 @@ export function createViewer(element: HTMLElement, source: DocumentSource, optio
     renderer = await render({
       element: content,
       bytes: opened.bytes,
+      url: streamed ? streamed.url : undefined,
       format: opened.format,
       name: opened.name,
       signal,

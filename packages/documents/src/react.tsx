@@ -31,7 +31,7 @@ export function useDocumentViewer(source: DocumentSource, options: ViewerOptions
     const current = latest.current;
     const next = createViewer(element, source, {
       ...current,
-      highlight: current.highlight && ((text, name) => latest.current.highlight!(text, name)),
+      ...(current.highlight ? { highlight: (text: string, name: string | undefined) => latest.current.highlight!(text, name) } : {}),
       onLink: (url) => latest.current.onLink?.(url),
     });
     setViewer(next);

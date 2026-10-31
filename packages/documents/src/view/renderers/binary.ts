@@ -20,7 +20,7 @@ export const render: RenderFunction = async (context) => {
   }
   const note = element.ownerDocument.createElement("p");
   note.className = "documents-message";
-  note.textContent = `${name ?? "This file"} is ${bytes.byteLength.toLocaleString()} bytes of binary data.${bytes.byteLength > shown ? ` These are the first ${shown.toLocaleString()}.` : ""}`;
+  note.textContent = `${name ?? "This file"} is binary data. ${head.length < bytes.byteLength ? `These are its first ${head.length.toLocaleString()} bytes.` : `It's ${bytes.byteLength.toLocaleString()} bytes long.`}`;
   const pre = element.ownerDocument.createElement("pre");
   pre.className = "documents-text";
   pre.textContent = rows.join("\n");

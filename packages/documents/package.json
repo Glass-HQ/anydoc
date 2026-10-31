@@ -21,13 +21,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./formats": {
+      "types": "./dist/formats.d.ts",
+      "import": "./dist/formats.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
-    }
+    },
+    "./pdf.worker.min.mjs": "./dist/pdf.worker.min.mjs"
   },
   "scripts": {
-    "build": "node ../../scripts/build-core-wasm.mjs && rm -rf dist && tsc -p tsconfig.build.json && cp -R src/core/wasm src/core/wasm-pdf dist/core/ && cp ../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs",
+    "build": "node ../../scripts/build-core-wasm.mjs && rm -rf dist && tsc -p tsconfig.build.json && cp -R src/core/wasm src/core/wasm-pdf dist/core/ && rm -f dist/core/wasm/.gitignore dist/core/wasm-pdf/.gitignore && cp ../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

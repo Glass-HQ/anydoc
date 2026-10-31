@@ -348,13 +348,10 @@ impl Palette {
                 n => n,
             };
             *self.theme.get(slot)?
-        } else if let Some(index) =
-            color.attr_unqualified("indexed").and_then(|v| v.parse::<usize>().ok())
-        {
-            // 64 is the system foreground and 65 the background: the viewer's own colors.
-            *self.indexed.get(index)?
         } else {
-            return None;
+            // 64 is the system foreground and 65 the background: the viewer's own colors.
+            let index = color.attr_unqualified("indexed")?.parse::<usize>().ok()?;
+            *self.indexed.get(index)?
         };
         let tint =
             color.attr_unqualified("tint").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);

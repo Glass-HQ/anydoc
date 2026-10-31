@@ -5,6 +5,8 @@ import type { ViewerOptions } from "./viewer.js";
 export interface RenderContext {
   readonly element: HTMLElement;
   readonly bytes: Uint8Array;
+  /** Set for media streamed from a URL; `bytes` is empty then. */
+  readonly url: string | undefined;
   readonly format: DocumentFormat;
   readonly name: string | undefined;
   readonly signal: AbortSignal;

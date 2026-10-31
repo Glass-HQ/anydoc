@@ -18,7 +18,7 @@ import { toMarkdown } from '@glass-hq/documents';
 const markdown = await toMarkdown(file); // a File, Blob, bytes, URL or stream
 ```
 
-The format is detected from the bytes; a name or media type only decides for files without a signature, like CSV or Markdown. Conversion runs on a worker, so a large file never blocks the page. `toDocument` stops at the document model, with embedded images as bytes, and `toWorkbook` reads a spreadsheet with its styles, sizes and charts.
+The format is detected from the bytes; a name or media type only decides for files without a signature, like CSV or Markdown. Conversion runs on a worker, so a large file never blocks the page. `toDocument` stops at the document model, with embedded images as bytes, and `toWorkbook` reads a spreadsheet with its styles, sizes, charts, tables, conditional formats and list validations, already resolved into each cell.
 
 ## Rendering
 
@@ -44,10 +44,13 @@ viewer.zoomIn();
 viewer.search('revenue');
 viewer.nextMatch();
 viewer.selectSheet(1);
+const release = viewer.renderThumbnail(3, thumbnailElement, 120); // page or slide 3, for a rail
 viewer.destroy();
 ```
 
-A part of the state is absent when the document has no such thing (a video has no pages), so controls for it never show.
+A part of the state is absent when the document has no such thing (a video has no pages), so controls for it never show. Images, video and audio given as a URL stream from it instead of being read into memory.
+
+`@glass-hq/documents/formats` has the format registry and detection alone, with nothing that touches the DOM or loads WebAssembly, for servers and React Native.
 
 ### React
 
@@ -70,8 +73,8 @@ function Viewer({ file }: { file: File }) {
 ### Options
 
 - `onLink(url)`: links in a document never navigate the page. Clicks on http(s) and mailto links come here.
-- `highlight(text, name)`: text and code show plain unless you pass a highlighter that returns an element.
-- `pdfWorker`: where pdf.js's worker is served from, if your bundler doesn't resolve it.
+- `highlight(text, name)`: text and code show plain unless you pass a highlighter. It returns an element, or `{ element, destroy }` when it holds resources. Search reaches into its open shadow roots.
+- `pdfWorker`: where pdf.js's worker is served from, if your bundler doesn't resolve it. The package exports it as `@glass-hq/documents/pdf.worker.min.mjs`.
 - `format`, `name`, `mediaType`, `maxBytes`, `signal`: as for `toMarkdown`.
 
 ### Theming

@@ -9,5 +9,5 @@ export type { DocumentSource, ReadOptions, ReadResult } from "./core/source.js";
 export { decodeText, openDocument, toDocument, toMarkdown, toWorkbook } from "./core/parse.js";
 export type * from "./core/parse.js";
 export { createViewer } from "./view/viewer.js";
-export type { DocumentViewer, ViewerOptions } from "./view/viewer.js";
+export type { DocumentViewer, Highlighted, ViewerOptions } from "./view/viewer.js";
 export type { SearchState, ViewerState } from "./view/state.js";
