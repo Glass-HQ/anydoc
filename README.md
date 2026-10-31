@@ -1,44 +1,140 @@
-# AnyDoc — BaseBlocks fork
+# Documents
 
-[![Crates.io](https://img.shields.io/crates/v/anydoc.svg)](https://crates.io/crates/anydoc)
-[![npm](https://img.shields.io/npm/v/@firecrawl/anydoc.svg)](https://www.npmjs.com/package/@firecrawl/anydoc)
-[![PyPI](https://img.shields.io/pypi/v/firecrawl-anydoc.svg)](https://pypi.org/project/firecrawl-anydoc/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![skills.sh](https://skills.sh/b/firecrawl/anydoc)](https://skills.sh/firecrawl/anydoc)
+Parse any file to Markdown and show it in your app. One package for the browser: PDF, Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV and TSV, Markdown and text, images, video, audio and fonts. Every format it reads to Markdown it also renders, and the other way round.
 
-> [!IMPORTANT]
-> This repository is a BaseBlocks-maintained fork of
-> [Firecrawl's `anydoc`](https://github.com/firecrawl/anydoc), originally forked
-> from [`v0.1.7`](https://github.com/firecrawl/anydoc/releases/tag/v0.1.7). The
-> upstream project provides the document parsing and Markdown conversion core.
-> This fork preserves that work and adds an embeddable rendering and viewing
-> platform so applications can preview documents directly.
+Parsing is [Firecrawl's anydoc](https://github.com/firecrawl/anydoc), a fast Rust converter, compiled to WebAssembly and kept in sync with upstream. Rendering, the format registry and the viewer are this fork's.
 
-The project has two complementary layers:
+**[Try the playground](https://glass-hq.github.io/anydoc/)**: drop in a file to see it rendered and as Markdown. It all runs in your browser; files never leave your machine.
 
-- **Parsing and ingestion:** the upstream Rust core converts Word, PowerPoint,
-  Excel, OpenDocument, RTF, EPUB, CSV, and PDF files into clean GitHub-Flavored
-  Markdown, with bindings for [Node.js](node/README.md),
-  [Python](python/README.md), and the [browser](wasm/README.md) (WebAssembly).
-- **Embedding and preview:** the BaseBlocks packages add a universal document
-  viewer — a framework-neutral headless engine plus React adapters — and the
-  shared contracts used by both stacks.
+```bash
+npm install @glass-hq/documents
+```
 
-The viewer packages expose `AnyDocumentViewer` for format-native previews of
-untrusted files. See
-[`packages/viewer/README.md`](packages/viewer/README.md) and
-[`packages/contracts/README.md`](packages/contracts/README.md).
+## Markdown
 
-Built by [Firecrawl](https://firecrawl.dev) to turn any office document into LLM-ready Markdown in single-digit milliseconds, with one consistent output no matter which format goes in. It powers [Firecrawl Parse](https://firecrawl.dev/parse), so if you'd rather not run it yourself, the hosted API gives you the same conversion plus our OCR models for the scanned pages anydoc can't read on its own.
+```js
+import { toMarkdown } from '@glass-hq/documents';
 
-**[Try the BaseBlocks playground](https://baseblocks-hq.github.io/anydoc/)**:
-drop in a document, inspect the Markdown produced by the parser, and preview
-supported source formats with the embeddable viewer. The entire demo runs
-locally in the browser, so files never leave your machine.
+const markdown = await toMarkdown(file); // a File, Blob, bytes, URL or stream
+```
 
-## Quick start
+The format is detected from the bytes; a name or media type only decides for files without a signature, like CSV or Markdown. Conversion runs on a worker, so a large file never blocks the page. `toDocument` stops at the document model, with embedded images as bytes, and `toWorkbook` reads a spreadsheet with its styles, sizes, charts, tables, conditional formats and list validations, already resolved into each cell.
 
-### Agent skill
+## Rendering
+
+```js
+import { createViewer } from '@glass-hq/documents';
+
+const viewer = createViewer(element, file, { onLink: (url) => window.open(url) });
+```
+
+The viewer fills `element`, which needs a size, and scrolls inside it. It draws the document and nothing else: no toolbar. Your controls read its state and call its actions:
+
+```js
+viewer.subscribe(() => {
+  const { status, page, zoom, search, sheets } = viewer.getState();
+  // page: { current, total }   PDFs and presentations
+  // zoom: { value, min, max }
+  // search: { query, total, current, pending }
+  // sheets: { names, current } spreadsheets
+});
+
+viewer.nextPage();
+viewer.zoomIn();
+viewer.search('revenue');
+viewer.nextMatch();
+viewer.selectSheet(1);
+const release = viewer.renderThumbnail(3, thumbnailElement, 120); // page or slide 3, for a rail
+viewer.destroy();
+```
+
+A part of the state is absent when the document has no such thing (a video has no pages), so controls for it never show. Images, video and audio given as a URL stream from it instead of being read into memory.
+
+`@glass-hq/documents/formats` has the format registry and detection alone, with nothing that touches the DOM or loads WebAssembly, for servers and React Native.
+
+### React
+
+```tsx
+import { useDocumentViewer } from '@glass-hq/documents/react';
+
+function Viewer({ file }: { file: File }) {
+  const { ref, state, viewer } = useDocumentViewer(file);
+  return (
+    <>
+      {state.page && <button onClick={() => viewer?.nextPage()}>Next</button>}
+      <div ref={ref} style={{ height: 600 }} />
+    </>
+  );
+}
+```
+
+`<DocumentView source={file} />` is the same without controls.
+
+### Options
+
+- `onLink(url)`: links in a document never navigate the page. Clicks on http(s) and mailto links come here.
+- `highlight(text, name)`: text and code show plain unless you pass a highlighter. It returns an element, or `{ element, destroy }` when it holds resources. Search reaches into its open shadow roots.
+- `pdfWorker`: where pdf.js's worker is served from, if your bundler doesn't resolve it. The package exports it as `@glass-hq/documents/pdf.worker.min.mjs`.
+- `format`, `name`, `mediaType`, `maxBytes`, `signal`: as for `toMarkdown`.
+
+### Theming
+
+The viewer's styles sit in a `documents` cascade layer, so any style of yours wins. These custom properties on the element cover the common cases:
+
+| Property                              | What it sets                                   |
+| ------------------------------------- | ---------------------------------------------- |
+| `--documents-background`              | Behind the pages                               |
+| `--documents-page-background`         | The paper of PDF, Word and slide pages         |
+| `--documents-page-shadow`             | Around each page                               |
+| `--documents-gap`, `--documents-padding` | Space between and around pages              |
+| `--documents-match`, `--documents-match-current` | Search highlights                   |
+| `--documents-font`, `--documents-mono` | Text in reading views, and text and code      |
+
+The document itself keeps the colors and fonts its file gives it.
+
+### Untrusted files
+
+Every file is treated as hostile. Nothing in a document runs, and nothing loads from the network: macros, scripts, forms, embedded HTML and external media are never executed or fetched, links go through `onLink`, and formats without a layout engine are built node by node from the parsed model rather than from markup. Every format has a byte limit, and readers cap pages, slides and cells.
+
+## Formats
+
+<!-- formats:start -->
+| Format | Extensions | Markdown | Rendered as |
+| --- | --- | --- | --- |
+| PDF | `.pdf` | Converted | Pages, through pdf.js |
+| Word | `.docx`, `.docm`, `.dotx`, `.dotm` | Converted | Pages, through docx-preview |
+| Word 97-2003 | `.doc`, `.dot` | Converted | Reading view, from the document model |
+| OpenDocument Text | `.odt`, `.ott` | Converted | Reading view, from the document model |
+| Rich Text | `.rtf` | Converted | Reading view, from the document model |
+| EPUB | `.epub` | Converted | Reading view, from the document model |
+| PowerPoint | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | Converted | Slides, through pptx-renderer |
+| PowerPoint 97-2003 | `.ppt`, `.pps`, `.pot` | Converted | Reading view, from the document model |
+| OpenDocument Presentation | `.odp`, `.otp` | Converted | Reading view, from the document model |
+| Excel | `.xlsx`, `.xlsm`, `.xltx`, `.xltm` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| Excel Binary | `.xlsb` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| Excel 97-2003 | `.xls`, `.xlt` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| OpenDocument Spreadsheet | `.ods`, `.ots` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| CSV | `.csv` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| TSV | `.tsv`, `.tab` | Converted | Spreadsheet grid, with the styles, merges and charts the file has |
+| Markdown | `.md`, `.markdown`, `.mdown`, `.mkd` | As written | Formatted, as GitHub renders it |
+| Text | `.txt`, `.text`, `.log` | As written | Text, or your highlighter |
+| Image | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.bmp`, `.ico`, `.heic`, `.heif` | A line describing the file | The image |
+| SVG | `.svg` | A line describing the file | The image |
+| Video | `.mp4`, `.m4v`, `.mov`, `.webm`, `.ogv`, `.mkv` | A line describing the file | The browser's video player |
+| Audio | `.mp3`, `.wav`, `.ogg`, `.oga`, `.opus`, `.m4a`, `.aac`, `.flac`, `.weba` | A line describing the file | The browser's audio player |
+| Font | `.ttf`, `.otf`, `.woff`, `.woff2` | A line describing the file | A sample sheet |
+| File | anything else | A line describing the file | Text, or its first bytes |
+<!-- formats:end -->
+
+PDF to Markdown needs text: scanned pages are reported as `needsOcr`. They still render.
+
+## The Rust core
+
+The parser is upstream's, documented below as Firecrawl publishes it: as a crate, a Node.js package, a Python wheel and a WebAssembly module. This fork adds `to_workbook` to it, the spreadsheet model the viewer draws, built from the same readers as the Markdown, and a `pdf` feature (on by default) so builds that never convert PDFs can leave pdf-inspector out.
+
+### Quick start
+
+#### Agent skill
 
 anydoc ships as an [Agent Skill](https://agentskills.io), so your agent can read any document it runs into:
 
@@ -48,7 +144,7 @@ npx skills add firecrawl/anydoc
 
 The [skill](skills/convert-documents-to-markdown/SKILL.md) teaches the agent to convert documents with the anydoc CLI. Works with [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex/), [Cursor](https://cursor.com), [OpenCode](https://opencode.ai), and any other [compatible agent](https://agentskills.io/clients).
 
-### CLI
+#### CLI
 
 ```bash
 npx @firecrawl/anydoc report.docx               # Markdown to stdout
@@ -59,7 +155,7 @@ npx @firecrawl/anydoc scan.pdf --ocr hosted     # scanned pages via Firecrawl Pa
 
 `npx` downloads the prebuilt binary for your platform on first run. For a permanent `anydoc` command, install globally with `npm install -g @firecrawl/anydoc`. Run `anydoc --help` for all options.
 
-### Node.js
+#### Node.js
 
 ```bash
 npm install @firecrawl/anydoc
@@ -86,7 +182,7 @@ const document = await toDocument(bytes);
 
 > Full API reference: [node/README.md](node/README.md)
 
-### Python
+#### Python
 
 ```bash
 pip install firecrawl-anydoc
@@ -113,7 +209,7 @@ document = anydoc.to_document(data)
 
 > Full API reference: [python/README.md](python/README.md)
 
-### Browser (WebAssembly)
+#### Browser (WebAssembly)
 
 ```bash
 npm install @firecrawl/anydoc-wasm
@@ -136,7 +232,7 @@ const document = toDocument(bytes);
 
 > Full API reference: [wasm/README.md](wasm/README.md)
 
-### Rust
+#### Rust
 
 ```bash
 cargo add anydoc
@@ -156,7 +252,7 @@ let markdown = anydoc::to_markdown_bytes(&bytes, anydoc::Format::Csv)?;
 let document = anydoc::to_document(&bytes, None)?;
 ```
 
-## OCR
+### OCR
 
 anydoc reads text-based PDFs locally but does no OCR, so a PDF with scanned or image-only pages fails with `NeedsOcr`. Opt in and those documents go to [Firecrawl Parse](https://firecrawl.dev/parse), which OCRs them and returns the same Markdown. No signup needed; set `FIRECRAWL_API_KEY` for higher limits.
 
@@ -166,9 +262,9 @@ anydoc reads text-based PDFs locally but does no OCR, so a PDF with scanned or i
 | Node   | `toMarkdown('scan.pdf', { ocr: 'hosted' })`    | `apiKey`                      |
 | Python | `anydoc.to_markdown("scan.pdf", ocr="hosted")` | `api_key`                     |
 
-Only documents that need OCR leave the machine, and the whole document goes, since Parse has no page selection. If Parse cannot convert it, Node rejects with `code: 'hosted'` and Python raises `HostedError`. `--api-url`, `apiUrl` and `api_url`, else `FIRECRAWL_API_URL`, point at another Parse deployment. The Rust crate has no `ocr` option and never makes network calls.
+Only documents that need OCR leave the machine, and the whole document goes, since Parse has no page selection. If Parse cannot convert it, Node rejects with `code: 'hosted'` and Python raises `HostedError`. `--api-url`, `apiUrl` and `api_url`, else `FIRECRAWL_API_URL`, point at another Parse deployment. `--parse-mode`, `parseMode` and `parse_mode` pick the Parse PDF mode: `auto` (the default) extracts text and falls back to OCR, `fast` extracts text only, `ocr` OCRs every page. The Rust crate has no `ocr` option and never makes network calls.
 
-## Features
+### Features
 
 - **One output for every format.** Each format parses into a shared document model and renders through a single Markdown serializer, so escaping, tables, heading anchors, and footnotes behave identically whether the input was a `.doc` from 2003 or a `.pptx` from yesterday.
 - **Full document structure.** Headings with anchors, bold/italic/strikethrough, inline code and code blocks, links and internal cross-references, bulleted/numbered/nested/task lists with the source's own numbering, tables with merged cells and header rows, block quotes, footnotes and endnotes, and speaker notes.
@@ -180,7 +276,7 @@ Only documents that need OCR leave the machine, and the whole document goes, sin
 - **PDF support built in.** Text-based PDFs convert locally through [pdf-inspector](https://github.com/firecrawl/pdf-inspector), no OCR service required. Scanned pages can opt into [hosted OCR](#scanned-pdfs-ocr).
 - **Agent ready.** Ships as an [Agent Skill](#agent-skill): one `npx skills add firecrawl/anydoc` and any agent can read office documents.
 
-## Supported formats
+### Supported formats
 
 | Format           | Extensions                                                 |
 | ---------------- | ---------------------------------------------------------- |
@@ -193,7 +289,7 @@ Only documents that need OCR leave the machine, and the whole document goes, sin
 | CSV              | `.csv`                                                     |
 | PDF              | `.pdf`                                                     |
 
-## Benchmark
+### Benchmark
 
 anydoc is measured against six other converters on 100 real-world documents spanning fourteen formats. Scores run from 0 to 100, higher is better; speed is the median time to convert one document.
 
@@ -231,7 +327,7 @@ Speed is one warm conversion per document on a Ryzen 9 9950X3D (Windows 11, 64 G
 
 **Best fit:** pipelines that receive a mixed bag of office documents and need one consistent, structured Markdown output. In this comparison, anydoc was the only tool to cover all fourteen formats, scored highest on every judged format, and converted documents an order of magnitude faster than the next-fastest tool.
 
-## Format detection
+### Format detection
 
 The format is read from the file content, using the marker its specification designates: the PDF header, the RTF open group, OLE stream names, the ZIP package mimetype and content types. CSV has no such marker, so the extension or an explicit format names it instead.
 
@@ -241,38 +337,9 @@ Format::from_extension("pptm"); // Some(Format::Pptx)
 Format::from_path(Path::new("report.odt")); // Some(Format::Odt)
 ```
 
-## Optional native viewer platform
-
-The `packages/` workspace adds an optional, modular visual surface for consumers that need
-to inspect original source bytes. It is deliberately separate from the Rust/WASM
-ingestion model: extracted Markdown is for content workflows, while viewers use
-format-native renderers.
-
-```tsx
-import { AnyDocumentViewer } from '@baseblocks/anydoc-viewer/react';
-
-<AnyDocumentViewer source={fileOrBytes} filename="report.xlsx" />
-```
-
-The platform has two public packages. `@baseblocks/anydoc-viewer` is the
-document viewer: a framework-neutral headless engine (format detection, bounded
-byte loading, security primitives, and the spreadsheet read engine) at its root
-entry, with every React viewer behind a `/react` subpath.
-`@baseblocks/anydoc-contracts` carries the shared error, limit,
-URL-safety, and safe-source-reader contracts, including `readSource`/`iterableSource` for reading
-untrusted bytes under hard limits (`@baseblocks/anydoc-contracts/sources`).
-
-The alpha capability matrix covers text/Markdown, PDF, DOCX, XLSX/CSV, and PPTX.
-Viewers must enforce bounded resources and treat files as untrusted: macros,
-scripts, formulas, external workbook references, external media, and active HTML are
-not executed or fetched automatically. DOC/DOCM, XLS/XLSM/XLSB, PPT/PPS/POT/PPTM/
-PPSX/PPSM, ODT/ODS/ODP, RTF, and EPUB remain semantic-ingestion-only until a
-format-native viewer is implemented and verified. Scanned/image-only PDFs are
-visually viewable with PDF.js, but semantic ingestion requires a future OCR pipeline.
-
 The same three functions exist in Node (`formatFromBytes`, ...) and Python (`anydoc.format_from_bytes`, ...).
 
-## Errors
+### Errors
 
 A conversion returns `Err` only when no complete Markdown could come out of the file. `ConvertError` names what went wrong:
 
@@ -306,7 +373,7 @@ Node and wasm publish the variant name on `error.code`; Python raises one `anydo
 
 anydoc converts locally and does not do OCR, so a PDF with scanned pages fails with `NeedsOcr`. Opt in with `ocr: 'hosted'` in Node, `ocr="hosted"` in Python or `--ocr hosted` on the CLI to send that document to [Firecrawl Parse](https://firecrawl.dev/parse). No signup needed. Set `FIRECRAWL_API_KEY` for higher limits.
 
-## How it works
+### How it works
 
 ```
 document bytes
@@ -329,23 +396,15 @@ Because every format funnels through the same document model and serializer, out
 ## Development
 
 ```bash
-cargo test
-cd node && npm install && npm run build && npm test
-cd python && pip install maturin && maturin develop && python -m unittest discover -s tests
-wasm-pack build wasm --release --target web --scope firecrawl && node --test wasm/test.mjs  # see wasm/README.md
+pnpm install
+pnpm build        # the Rust core to WebAssembly, then the package
+pnpm test
+pnpm dev:playground
+cargo test        # the Rust core
 ```
 
-A committed fixture corpus under `tests/fixtures/` is snapshot-tested, `tests/robustness.rs` mutation-tests every fixture, and `fuzz/` carries cargo-fuzz targets per format. The speed and quality benchmark lives in [`bench/`](bench/README.md).
-
-Releases are tagged `v<version>`, which publishes the crate, the npm package, and the PyPI wheels from [`.github/workflows/release.yml`](.github/workflows/release.yml). The version lives in three places, bumped together for a release:
-
-- [`Cargo.toml`](Cargo.toml): the crate
-- [`node/package.json`](node/package.json): the npm package
-- [`python/Cargo.toml`](python/Cargo.toml): the wheel (`python/pyproject.toml` reads it)
+Publishing `@glass-hq/documents`: bump the version in `packages/documents/package.json` and push a `documents-v<version>` tag. Upstream's `v*` tags and release workflow are left as they are.
 
 ## License
 
-This fork is distributed under the [MIT License](LICENSE). It retains the
-original copyright and license notice from Firecrawl / Sideguide Technologies
-Inc.; BaseBlocks modifications are released under the same license. See
-[`NOTICE`](NOTICE) for fork provenance and attribution.
+[MIT](LICENSE). The parser is Firecrawl's anydoc; see [NOTICE](NOTICE).

@@ -3,17 +3,22 @@
 //! merge regions. Rows, columns, and sheets the source hides are omitted,
 //! and merge regions are remapped onto the surviving grid.
 
+use super::assemble::{ReadWorkbook, SheetView};
 use super::controls::{Checkboxes, cell_inlines, read_vml_checkboxes};
+use super::drawings::read_drawings;
 use super::numfmt::{DateParts, NumberFormat, Rendered, builtin_code};
+use super::rules::{SheetRules, read_rules};
+use super::styles::ViewStyles;
 use super::{format_duration_days, format_float, format_time_of_day};
 use crate::error::ConvertError;
-use crate::model::{Block, Cell, Document, GridBuilder, Inline, Table, TableKind};
+use crate::model::{Cell, GridBuilder, Inline, Table, TableKind};
 use crate::package::limits;
 use crate::package::relationships::{Relationships, read_rels, rel_type, rels_part_for};
 use crate::package::xml::{Element, ns};
 use crate::package::{Package, path};
 use crate::shared::header::resolve_header_rows;
 use crate::shared::text::clean_text;
+use crate::workbook::CellKind;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -25,7 +30,18 @@ pub(super) const SHARED_STRINGS_REL: &str =
 pub(super) const MAX_ROWS: u32 = 1_048_576;
 pub(super) const MAX_COLS: u32 = 16_384;
 
-pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, ConvertError> {
+const THEME_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
+const HYPERLINK_REL: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+
+/// Read the workbook's visible sheets. `view` adds what only the viewer
+/// needs (styles, links, pictures and charts); Markdown never pays for it,
+/// and a broken one of those parts never stops a conversion.
+pub(super) fn read(
+    pkg: &mut Package,
+    wb_part: &str,
+    view: bool,
+) -> Result<ReadWorkbook, ConvertError> {
     let workbook = pkg.required_xml_part(wb_part)?;
     // Any OOXML main part resolves here; a document or presentation would
     // otherwise convert to an empty workbook.
@@ -43,8 +59,15 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
             Some(root) => shared_strings(&root),
             None => Vec::new(),
         };
-    let styles =
-        Styles::read(sibling_part(pkg, &wb_rels, wb_part, rel_type::STYLES, "styles.xml")?);
+    let styles_root = sibling_part(pkg, &wb_rels, wb_part, rel_type::STYLES, "styles.xml")?;
+    let view_styles = if view {
+        let theme =
+            sibling_part(pkg, &wb_rels, wb_part, THEME_REL, "theme/theme1.xml").ok().flatten();
+        ViewStyles::read(styles_root.as_ref(), theme.as_ref())
+    } else {
+        ViewStyles::plain()
+    };
+    let styles = Styles::read(styles_root);
 
     // Visible sheets in workbook order; hidden and veryHidden sheets are
     // omitted entirely, heading included.
@@ -70,32 +93,71 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
         }
     }
 
-    let multi_sheet = sheets.len() > 1;
-    let mut doc = Document::default();
-    let mut failed = 0usize;
-    // One budget for the workbook, so sheets cannot multiply the cap.
-    let mut slots = 0u64;
-    for (name, part) in &sheets {
-        let worksheet = pkg.optional_xml_part(part)?;
+    let mut out = ReadWorkbook { sheets: Vec::new(), unreadable: 0, styles: view_styles };
+    for (name, part) in sheets {
+        let worksheet = pkg.optional_xml_part(&part)?;
         let Some(worksheet) = worksheet.as_ref().and_then(|r| r.find(ns::SML, "worksheet")) else {
             log::warn!("skipping unreadable sheet {name:?}");
-            failed += 1;
+            out.unreadable += 1;
             continue;
         };
         let mut content = read_sheet(worksheet, &shared, &styles, date1904);
-        content.checkboxes = read_vml_checkboxes(pkg, part)?;
-        let Some(table) = build_table(content, &mut slots)? else {
+        content.checkboxes = read_vml_checkboxes(pkg, &part)?;
+        if view {
+            content.view.links = read_hyperlinks(pkg, &part, worksheet).unwrap_or_else(|e| {
+                log::warn!("skipping unreadable hyperlinks in {name:?}: {e}");
+                HashMap::new()
+            });
+            content.view.drawings = read_drawings(pkg, &part).unwrap_or_else(|e| {
+                log::warn!("skipping unreadable drawings in {name:?}: {e}");
+                Vec::new()
+            });
+            content.view.rules =
+                read_rules(pkg, &part, worksheet, parse_region).unwrap_or_else(|e| {
+                    log::warn!("skipping unreadable formatting rules in {name:?}: {e}");
+                    SheetRules::default()
+                });
+        }
+        out.sheets.push((name, content));
+    }
+    Ok(out)
+}
+
+/// External hyperlinks by the cell they start in. Only http(s) and mailto
+/// targets are kept: the viewer opens them, so nothing else gets through.
+fn read_hyperlinks(
+    pkg: &mut Package,
+    part: &str,
+    worksheet: &Element,
+) -> Result<HashMap<(u32, u32), String>, ConvertError> {
+    let mut links = HashMap::new();
+    let Some(list) = worksheet.find(ns::SML, "hyperlinks") else {
+        return Ok(links);
+    };
+    let rels = read_rels(pkg, &rels_part_for(part))?;
+    for link in list.find_all(ns::SML, "hyperlink") {
+        let Some(at) =
+            link.attr_unqualified("ref").and_then(parse_region).map(|(r, c, _, _)| (r, c))
+        else {
             continue;
         };
-        if multi_sheet {
-            doc.blocks.push(Block::heading(2, vec![Inline::plain(name.clone())]));
+        let Some(target) = link
+            .attr_qualified(ns::R, "id")
+            .and_then(|id| rels.get(id))
+            .filter(|rel| rel.rel_type == HYPERLINK_REL)
+            .map(|rel| rel.target.trim())
+        else {
+            continue;
+        };
+        let lower = target.to_ascii_lowercase();
+        if lower.starts_with("https://")
+            || lower.starts_with("http://")
+            || lower.starts_with("mailto:")
+        {
+            links.insert(at, target.to_string());
         }
-        doc.blocks.push(Block::Table(table));
     }
-    if !sheets.is_empty() && failed == sheets.len() {
-        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
-    }
-    Ok(doc)
+    Ok(links)
 }
 
 /// Part name for a workbook-level sibling: the relationship of the given
@@ -166,6 +228,11 @@ struct Styles {
     xfs: Vec<CellFormat>,
 }
 
+/// A cell's `s` attribute: an index into `cellXfs`, 0 when absent.
+fn xf_index(s: Option<&str>) -> usize {
+    s.and_then(|s| s.parse::<usize>().ok()).unwrap_or(0)
+}
+
 impl Styles {
     fn read(root: Option<Element>) -> Styles {
         let Some(root) = root else {
@@ -203,8 +270,7 @@ impl Styles {
     /// The format for a cell's `s` attribute, an index into `cellXfs`
     /// (default 0).
     fn for_cell(&self, s: Option<&str>) -> &CellFormat {
-        let i = s.and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        self.xfs.get(i).unwrap_or(&CellFormat::General)
+        self.xfs.get(xf_index(s)).unwrap_or(&CellFormat::General)
     }
 }
 
@@ -243,6 +309,8 @@ pub(super) struct SheetContent {
     pub(super) hidden_cols: Vec<(u32, u32)>,
     /// Inclusive zero-based merge regions (r1, c1, r2, c2), area > 1.
     pub(super) merges: Vec<(u32, u32, u32, u32)>,
+    /// What only the viewer reads: styles, sizes, panes and links.
+    pub(super) view: SheetView,
 }
 
 fn read_sheet(
@@ -254,19 +322,49 @@ fn read_sheet(
     let mut out = SheetContent::default();
     for cols in worksheet.find_all(ns::SML, "cols") {
         for col in cols.find_all(ns::SML, "col") {
-            if !col.attr_unqualified("hidden").is_some_and(bool_attr) {
-                continue;
-            }
             let bound = |name| {
                 col.attr_unqualified(name)
                     .and_then(|v| v.parse::<u32>().ok())
                     .and_then(|v| v.checked_sub(1))
             };
+            if let (Some(min), Some(max), Some(width)) = (
+                bound("min"),
+                bound("max"),
+                col.attr_unqualified("width").and_then(|v| v.parse::<f64>().ok()),
+            ) && min <= max
+                && col.attr_unqualified("customWidth").is_none_or(bool_attr)
+            {
+                out.view.column_widths.push((min, max.min(MAX_COLS - 1), width));
+            }
+            if !col.attr_unqualified("hidden").is_some_and(bool_attr) {
+                continue;
+            }
             if let (Some(min), Some(max)) = (bound("min"), bound("max"))
                 && min <= max
             {
                 out.hidden_cols.push((min, max.min(MAX_COLS - 1)));
             }
+        }
+    }
+    if let Some(format) = worksheet.find(ns::SML, "sheetFormatPr") {
+        let number = |name| format.attr_unqualified(name).and_then(|v| v.parse::<f64>().ok());
+        out.view.default_row_height = number("defaultRowHeight");
+        out.view.default_column_width =
+            number("defaultColWidth").or_else(|| number("baseColWidth").map(|w| w + 0.71));
+    }
+    if let Some(view) =
+        worksheet.find(ns::SML, "sheetViews").and_then(|v| v.find(ns::SML, "sheetView"))
+    {
+        out.view.hide_grid_lines =
+            view.attr_unqualified("showGridLines").is_some_and(|v| !bool_attr(v));
+        if let Some(pane) = view.find(ns::SML, "pane")
+            && matches!(pane.attr_unqualified("state"), Some("frozen" | "frozenSplit"))
+        {
+            let split = |name| {
+                pane.attr_unqualified(name).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)
+            };
+            out.view.frozen_rows = split("ySplit").clamp(0.0, MAX_ROWS as f64) as u32;
+            out.view.frozen_columns = split("xSplit").clamp(0.0, MAX_COLS as f64) as u32;
         }
     }
     let mut next_row: u32 = 0;
@@ -283,6 +381,11 @@ fn read_sheet(
         if row.attr_unqualified("hidden").is_some_and(bool_attr) {
             out.hidden_rows.insert(r);
         }
+        if row.attr_unqualified("customHeight").is_some_and(bool_attr)
+            && let Some(height) = row.attr_unqualified("ht").and_then(|v| v.parse::<f64>().ok())
+        {
+            out.view.row_heights.push((r, height));
+        }
         let mut next_col: u32 = 0;
         for c in row.find_all(ns::SML, "c") {
             // Position comes from the cell's own reference: a row may skip
@@ -296,8 +399,20 @@ fn read_sheet(
             if cr >= MAX_ROWS || cc >= MAX_COLS {
                 continue;
             }
+            let xf = xf_index(c.attr_unqualified("s"));
+            if xf != 0 {
+                out.view.xfs.insert((cr, cc), xf as u32);
+            }
             let text = cell_text(c, shared, styles, date1904);
             if !text.is_empty() {
+                let kind = cell_kind(c);
+                if kind == CellKind::Number
+                    && let Some(n) =
+                        c.find(ns::SML, "v").and_then(|v| v.text().trim().parse::<f64>().ok())
+                {
+                    out.view.numbers.insert((cr, cc), n);
+                }
+                out.view.kinds.insert((cr, cc), kind);
                 out.cells.insert((cr, cc), text);
             }
         }
@@ -315,6 +430,16 @@ fn read_sheet(
         }
     }
     out
+}
+
+/// What a cell holds, from its `t` type.
+fn cell_kind(c: &Element) -> CellKind {
+    match c.attr_unqualified("t").unwrap_or("n") {
+        "s" | "str" | "inlineStr" => CellKind::Text,
+        "b" => CellKind::Bool,
+        "e" => CellKind::Error,
+        _ => CellKind::Number,
+    }
 }
 
 /// A cell's rendered text, per its `t` type and resolved number format.
@@ -689,6 +814,7 @@ fn bool_attr(v: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Block, Document};
     use crate::model::{CellSlot, inlines_to_plain_text};
     use std::io::Write;
 

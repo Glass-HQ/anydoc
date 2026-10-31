@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 pub mod model;
+pub mod workbook;
 
 mod error;
 mod formats;
@@ -121,7 +122,10 @@ pub fn to_markdown_bytes(
     // PDFs convert to Markdown directly (pdf-inspector) without passing
     // through the document model.
     if format == Format::Pdf {
+        #[cfg(feature = "pdf")]
         return formats::pdf::to_markdown(bytes);
+        #[cfg(not(feature = "pdf"))]
+        return Err(ConvertError::Unsupported("built without the pdf feature".into()));
     }
     Ok(document_to_markdown(&to_document(bytes, format)?))
 }
@@ -136,6 +140,17 @@ pub fn to_document(
     format: impl Into<Option<Format>>,
 ) -> Result<model::Document, ConvertError> {
     formats::parse(bytes, resolve_format(bytes, format.into())?)
+}
+
+/// Read a spreadsheet the way a viewer draws it: every visible sheet's cells
+/// with their displayed text and styles, merges, sizes and frozen panes.
+/// Supported for [`Format::Excel`], [`Format::Ods`] and [`Format::Csv`];
+/// the last two carry values and merges only.
+pub fn to_workbook(
+    bytes: &[u8],
+    format: impl Into<Option<Format>>,
+) -> Result<workbook::Workbook, ConvertError> {
+    formats::workbook(bytes, resolve_format(bytes, format.into())?)
 }
 
 fn resolve_format(bytes: &[u8], format: Option<Format>) -> Result<Format, ConvertError> {

@@ -20,9 +20,13 @@ crate-type = ["cdylib", "rlib"]
 wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 
 [dependencies]
-anydoc = { path = ".." }
+anydoc = { path = "..", default-features = false }
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen = "0.2"
+
+[features]
+default = ["pdf"]
+pdf = ["anydoc/pdf"]

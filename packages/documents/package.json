@@ -1,0 +1,66 @@
+{
+  "name": "@glass-hq/documents",
+  "version": "0.3.0",
+  "description": "Parse any file to Markdown and render it in the browser: PDF, Office, OpenDocument, EPUB, spreadsheets, images, media and more.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Glass-HQ/anydoc.git",
+    "directory": "packages/documents"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./formats": {
+      "types": "./dist/formats.d.ts",
+      "import": "./dist/formats.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./pdf.worker.min.mjs": "./dist/pdf.worker.min.mjs"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-core-wasm.mjs && rm -rf dist && tsc -p tsconfig.build.json && cp -R src/core/wasm src/core/wasm-pdf dist/core/ && rm -f dist/core/wasm/.gitignore dist/core/wasm-pdf/.gitignore && cp ../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "react": ">=18.2"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@aiden0z/pptx-renderer": "1.4.0",
+    "docx-preview": "^0.4.1",
+    "micromark": "^4.0.3",
+    "micromark-extension-gfm": "^3.0.0",
+    "pdfjs-dist": "6.4.299"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "jsdom": "^30.1.3",
+    "react": "^19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
