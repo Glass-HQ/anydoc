@@ -3,39 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>anydoc by Firecrawl</title>
+    <title>Documents: parse and render any file</title>
     <meta
       name="description"
-      content="Convert doc, docx, odt, rtf, epub, pdf, presentations, spreadsheets, and csv to GitHub-Flavored Markdown, entirely in your browser."
+      content="Turn any file into Markdown and show it in your app: PDF, Word, PowerPoint, Excel, OpenDocument, EPUB, images, media and more, entirely in the browser."
     />
-    <meta property="og:title" content="anydoc by Firecrawl" />
+    <meta property="og:title" content="Documents: parse and render any file" />
     <meta
       property="og:description"
-      content="An open source Rust library that turns any office document into clean GitHub-Flavored Markdown, with bindings for Node.js, Python, and the browser. Try it here: the conversion runs as WebAssembly, in your browser."
+      content="One package that reads any file into GitHub-Flavored Markdown and renders it in the browser, with headless controls you style yourself. Try it here: everything runs in your browser."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://firecrawl.github.io/anydoc/" />
+    <meta property="og:url" content="https://glass-hq.github.io/documents/" />
     <meta name="twitter:card" content="summary" />
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
     <style>
-      @font-face {
-        font-family: 'Suisse Intl';
-        src: url('assets/fonts/SuisseIntl-400.woff2') format('woff2');
-        font-weight: 400;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: 'Suisse Intl';
-        src: url('assets/fonts/SuisseIntl-450.woff2') format('woff2');
-        font-weight: 450;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: 'Suisse Intl';
-        src: url('assets/fonts/SuisseIntl-500.woff2') format('woff2');
-        font-weight: 500;
-        font-display: swap;
-      }
       @font-face {
         font-family: 'Geist Mono';
         src: url('assets/fonts/GeistMono-400.woff2') format('woff2');
@@ -50,8 +32,8 @@
       }
 
       :root {
-        --heat: #fa5d19;
-        --heat-4: rgba(250, 93, 25, 0.04);
+        --heat: #2563eb;
+        --heat-4: rgba(37, 99, 235, 0.05);
         --bg: #f9f9f9;
         --surface: #ffffff;
         --text: #262626;
@@ -62,7 +44,7 @@
         --border-muted: #e8e8e8;
         --border-loud: #e6e6e6;
         --error: #eb3424;
-        --sans: 'Suisse Intl', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
         --mono:
           'Geist Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas,
           monospace;
@@ -412,6 +394,100 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      .tabs {
+        display: inline-flex;
+        gap: 4px;
+      }
+      .tabs button[aria-selected='true'] {
+        border-color: var(--heat);
+        color: var(--heat);
+      }
+      .pane[hidden] {
+        display: none;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        margin-bottom: 8px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--text-muted);
+      }
+      .controls button,
+      .controls select,
+      .controls input {
+        font: 13px var(--sans);
+        color: var(--text);
+        background: var(--surface);
+        border: 1px solid var(--border-loud);
+        border-radius: 8px;
+        padding: 4px 10px;
+      }
+      .controls button {
+        cursor: pointer;
+        min-width: 30px;
+      }
+      .controls button:hover:not(:disabled) {
+        border-color: var(--heat);
+        color: var(--heat);
+      }
+      .controls button:disabled {
+        opacity: 0.4;
+      }
+      .controls input {
+        width: 160px;
+      }
+      .controls .spacer {
+        flex: 1;
+      }
+      .pane,
+      .stage {
+        width: 100%;
+      }
+      .stage {
+        display: flex;
+        gap: 8px;
+      }
+      .thumbs {
+        flex: none;
+        width: 112px;
+        height: 70vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .thumbs[hidden] {
+        display: none;
+      }
+      .thumbs button {
+        padding: 4px;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        background: none;
+        cursor: pointer;
+        font: 11px var(--mono);
+        color: var(--text-muted);
+      }
+      .thumbs button[aria-current='page'] {
+        border-color: var(--heat);
+      }
+      .thumbs .thumb {
+        min-height: 54px;
+        box-shadow: 0 0 0 1px var(--border-loud);
+      }
+      .viewer {
+        flex: 1;
+        min-width: 0;
+        height: 70vh;
+        border: 1px solid var(--border-faint);
+        border-radius: 12px;
+        overflow: hidden;
+        --documents-background: var(--alpha-4);
+      }
       pre.output.error {
         color: var(--error);
       }
@@ -600,40 +676,29 @@
         </svg>
 
         <section class="band">
-          <h1>Any document in.<br /><span class="heat">Markdown out.</span></h1>
+          <h1>Any file in.<br /><span class="heat">Markdown and a viewer out.</span></h1>
           <p class="lede">
-            Open source Rust library that converts Word, PowerPoint, Excel,
-            PDF, and more to GitHub-Flavored Markdown. Node, Python, browser,
-            and CLI bindings. It runs here in your browser:
+            One package that reads PDF, Word, PowerPoint, Excel, OpenDocument,
+            EPUB, images, media and more into GitHub-Flavored Markdown, and
+            renders every one of them in your app. The controls are yours to
+            draw. It all runs here in your browser:
             <strong>files never leave your machine</strong>.
           </p>
           <ul class="badges">
             <li>
-              <a href="https://crates.io/crates/anydoc">
-                <span class="key">crates.io</span
-                ><span class="value">anydoc</span>
-              </a>
-            </li>
-            <li>
-              <a href="https://www.npmjs.com/package/@firecrawl/anydoc">
+              <a href="https://www.npmjs.com/package/@glass-hq/documents">
                 <span class="key">npm</span
-                ><span class="value">@firecrawl/anydoc</span>
+                ><span class="value">@glass-hq/documents</span>
               </a>
             </li>
             <li>
-              <a href="https://pypi.org/project/firecrawl-anydoc/">
-                <span class="key">PyPI</span
-                ><span class="value">firecrawl-anydoc</span>
+              <a href="https://github.com/Glass-HQ/documents">
+                <span class="key">GitHub</span
+                ><span class="value">Glass-HQ/documents</span>
               </a>
             </li>
             <li>
-              <a href="https://skills.sh/firecrawl/anydoc">
-                <span class="key">skills.sh</span
-                ><span class="value">firecrawl/anydoc</span>
-              </a>
-            </li>
-            <li>
-              <a href="https://github.com/firecrawl/anydoc/blob/main/LICENSE">
+              <a href="https://github.com/Glass-HQ/documents/blob/main/LICENSE">
                 <span class="key">license</span><span class="value">MIT</span>
               </a>
             </li>
@@ -646,14 +711,16 @@
               >Loading the converter&hellip;</span
             >
             <span class="small" id="drop-hint"
-              >a few MB of WebAssembly, downloaded once</span
+              >about 650 KB of WebAssembly, downloaded once</span
             >
           </button>
           <input type="file" id="file" hidden />
           <p class="samples">
             No document at hand? Try a sample:
-            <button id="sample-rtf">notes.rtf</button>
-            <button id="sample-csv">report.csv</button>
+            <button data-sample="samples/document.pdf">document.pdf</button>
+            <button data-sample="samples/document.docx">document.docx</button>
+            <button data-sample="samples/presentation.pptx">presentation.pptx</button>
+            <button data-sample="samples/workbook.xlsx">workbook.xlsx</button>
           </p>
         </section>
 
@@ -663,10 +730,26 @@
             <span class="arrow" id="result-arrow" hidden>&rarr;</span>
             <span id="result-stats"></span>
             <span class="spacer"></span>
-            <button id="copy" hidden>Copy</button>
-            <button id="download" hidden>Download .md</button>
+            <span class="tabs" role="tablist">
+              <button role="tab" id="tab-view" aria-selected="true">Rendered</button>
+              <button role="tab" id="tab-markdown" aria-selected="false">Markdown</button>
+            </span>
           </div>
-          <pre class="output" id="output"></pre>
+          <div class="pane" id="pane-view">
+            <div class="controls" id="controls"></div>
+            <div class="stage">
+              <nav class="thumbs" id="thumbs" aria-label="Pages" hidden></nav>
+              <div class="viewer" id="viewer"></div>
+            </div>
+          </div>
+          <div class="pane" id="pane-markdown" hidden>
+            <div class="controls">
+              <span class="spacer"></span>
+              <button id="copy">Copy</button>
+              <button id="download">Download .md</button>
+            </div>
+            <pre class="output" id="output"></pre>
+          </div>
         </section>
 
         <section class="band">
@@ -678,6 +761,22 @@
               and renders through the same Markdown serializer, so headings,
               nested lists, merged table cells, and footnotes come out the same
               from a .doc written in 2003 as from yesterday's .pptx.
+            </dd>
+
+            <dt>Rendering</dt>
+            <dd>
+              Every format that parses also renders: PDF through pdf.js, Word
+              and PowerPoint as laid-out pages, every spreadsheet format in one
+              virtualized grid with its styles and charts, and the rest from the
+              document model. Files are untrusted: nothing in them runs or
+              reaches the network.
+            </dd>
+
+            <dt>Headless</dt>
+            <dd>
+              The viewer draws the document and nothing else. Pages, zoom,
+              search and sheets come out as state and actions, so the controls
+              above are this page's own: about forty lines of script.
             </dd>
 
             <dt>Detection</dt>
@@ -709,11 +808,10 @@
 
             <dt>This page</dt>
             <dd>
-              The converter above is
-              <a href="https://www.npmjs.com/package/@firecrawl/anydoc-wasm"
-                >@firecrawl/anydoc-wasm</a
-              >, anydoc compiled to WebAssembly. Drop it into your own app the
-              same way.
+              Everything above is
+              <a href="https://www.npmjs.com/package/@glass-hq/documents"
+                >@glass-hq/documents</a
+              >. Drop it into your own app the same way.
             </dd>
           </dl>
         </section>
@@ -721,42 +819,16 @@
         <section class="band">
           <h2>Install</h2>
           <dl class="installs">
-            <dt>Rust</dt>
-            <dd>
-              <span class="dollar">$</span>
-              <code class="cmd">cargo add anydoc</code>
-            </dd>
-            <dt>Node.js</dt>
-            <dd>
-              <span class="dollar">$</span>
-              <code class="cmd">npm install @firecrawl/anydoc</code>
-            </dd>
-            <dt>Python</dt>
-            <dd>
-              <span class="dollar">$</span>
-              <code class="cmd">pip install firecrawl-anydoc</code>
-            </dd>
             <dt>Browser</dt>
             <dd>
               <span class="dollar">$</span>
-              <code class="cmd">npm install @firecrawl/anydoc-wasm</code>
-            </dd>
-            <dt>CLI</dt>
-            <dd>
-              <span class="dollar">$</span>
-              <code class="cmd">npx @firecrawl/anydoc report.docx</code>
-            </dd>
-            <dt>Agent skill</dt>
-            <dd>
-              <span class="dollar">$</span>
-              <code class="cmd">npx skills add firecrawl/anydoc</code>
+              <code class="cmd">npm install @glass-hq/documents</code>
             </dd>
           </dl>
           <p class="prose" style="margin-top: 16px">
-            The API is the same everywhere: convert from a path or from bytes,
-            or stop at the document model and keep the embedded assets. See the
-            <a href="https://github.com/firecrawl/anydoc#quick-start">README</a
-            >.
+            Call <code>toMarkdown(file)</code> for Markdown, or
+            <code>createViewer(element, file)</code> to show it. See the
+            <a href="https://github.com/Glass-HQ/documents#readme">README</a>.
           </p>
         </section>
       </main>
@@ -767,130 +839,12 @@
           <line x1="100%" y1="0" x2="100%" y2="100%" transform="translate(-0.5 0)" />
         </svg>
         <span>MIT license</span>
-        <a href="https://github.com/firecrawl/anydoc">Source</a>
-        <a href="https://github.com/firecrawl/anydoc/issues">Issues</a>
-        <a href="https://firecrawl.dev">Built by Firecrawl</a>
+        <a href="https://github.com/Glass-HQ/documents">Source</a>
+        <a href="https://github.com/Glass-HQ/documents/issues">Issues</a>
+        <a href="https://github.com/firecrawl/anydoc">Built on Firecrawl's anydoc</a>
       </footer>
     </div>
 
-    <script type="module">
-      import init, {
-        formatFromBytes,
-        formatFromPath,
-        toMarkdownBytes,
-      } from './pkg/anydoc_wasm.js';
-
-      const $ = (id) => document.getElementById(id);
-      const dropTitle = $('drop-title');
-      const dropHint = $('drop-hint');
-      const output = $('output');
-
-      let markdown = '';
-      let baseName = 'document';
-
-      function showResult(name, format, stats, text, isError) {
-        $('result').hidden = false;
-        $('result-name').textContent = name;
-        $('result-arrow').hidden = isError;
-        $('result-stats').textContent = isError ? '' : `${format} · ${stats}`;
-        $('copy').hidden = isError;
-        $('download').hidden = isError;
-        output.textContent = text;
-        output.classList.toggle('error', isError);
-        $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-
-      function convert(name, bytes) {
-        const format = formatFromBytes(bytes) ?? formatFromPath(name);
-        baseName = name.replace(/\.[^.]*$/, '') || 'document';
-        try {
-          const started = performance.now();
-          markdown = toMarkdownBytes(bytes, format);
-          const ms = Math.max(1, Math.round(performance.now() - started));
-          const chars = markdown.length.toLocaleString('en-US');
-          showResult(
-            name,
-            format,
-            `${chars} chars · ${ms} ms`,
-            markdown,
-            false,
-          );
-        } catch (error) {
-          showResult(
-            name,
-            format,
-            '',
-            `Could not convert this file: ${error.message ?? error}`,
-            true,
-          );
-        }
-      }
-
-      async function convertFile(file) {
-        convert(file.name, new Uint8Array(await file.arrayBuffer()));
-      }
-
-      const SAMPLE_RTF = String.raw`{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}
-\pard\sa200 anydoc reads the {\b formatting}, the {\i emphasis}, and the {\b\i structure} of a document, then writes the Markdown that says the same thing.\par
-\pard\sa200 This paragraph came from a tiny RTF file assembled right on this page. Drop one of your own to see a real conversion.\par
-}`;
-      const SAMPLE_CSV =
-        'format,kind,since\ndocx,WordprocessingML,0.1.0\nepub,EPUB 2 and 3,0.1.0\nxlsx,Excel workbook,0.1.0\npdf,via pdf-inspector,0.1.0\n';
-
-      const drop = $('drop');
-      const file = $('file');
-      drop.addEventListener('click', () => file.click());
-      file.addEventListener('change', () => {
-        if (file.files[0]) convertFile(file.files[0]);
-      });
-
-      for (const eventName of ['dragover', 'drop']) {
-        window.addEventListener(eventName, (event) => event.preventDefault());
-      }
-      drop.addEventListener('dragover', () => drop.classList.add('over'));
-      drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-      drop.addEventListener('drop', (event) => {
-        drop.classList.remove('over');
-        const dropped = event.dataTransfer?.files?.[0];
-        if (dropped) convertFile(dropped);
-      });
-
-      $('sample-rtf').addEventListener('click', () =>
-        convert('notes.rtf', new TextEncoder().encode(SAMPLE_RTF)),
-      );
-      $('sample-csv').addEventListener('click', () =>
-        convert('report.csv', new TextEncoder().encode(SAMPLE_CSV)),
-      );
-
-      $('copy').addEventListener('click', async () => {
-        await navigator.clipboard.writeText(markdown);
-        $('copy').textContent = 'Copied';
-        setTimeout(() => {
-          $('copy').textContent = 'Copy';
-        }, 1200);
-      });
-
-      $('download').addEventListener('click', () => {
-        const url = URL.createObjectURL(
-          new Blob([markdown], { type: 'text/markdown' }),
-        );
-        const a = Object.assign(document.createElement('a'), {
-          href: url,
-          download: `${baseName}.md`,
-        });
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-
-      try {
-        await init();
-        dropTitle.textContent = 'Drop a document here';
-        dropHint.innerHTML =
-          'or <u>browse</u> for one. Conversion happens locally, nothing is uploaded.';
-      } catch (error) {
-        dropTitle.textContent = 'The converter failed to load';
-        dropHint.textContent = String(error?.message ?? error);
-      }
-    </script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

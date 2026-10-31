@@ -5,13 +5,13 @@
 //! assembly as the SpreadsheetML reader, so a workbook saved as .xls and as
 //! .xlsx converts identically.
 
+use super::assemble::ReadWorkbook;
 use super::controls::Checkbox;
-use super::xlsx::{
-    CellFormat, SheetContent, build_table, format_as_text, render_number, resolve_format,
-};
+use super::styles::ViewStyles;
+use super::xlsx::{CellFormat, SheetContent, format_as_text, render_number, resolve_format};
 use super::{error_literal, rk_number};
 use crate::error::ConvertError;
-use crate::model::{Block, Document, Inline};
+
 use crate::package::limits;
 use crate::shared::binary::{get_u16, get_u32, read_ole_stream, utf16le_units};
 use crate::shared::officeart;
@@ -52,37 +52,23 @@ const WORKSHEET_SUBSTREAM: u16 = 0x0010;
 /// The BIFF8 grid is 256 columns; a larger column index is not a real cell.
 const MAX_COLS: u32 = 256;
 
-pub(super) fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
+pub(super) fn read(bytes: &[u8]) -> Result<ReadWorkbook, ConvertError> {
     let mut ole = cfb::CompoundFile::open(Cursor::new(bytes))
         .map_err(|e| ConvertError::malformed(format!("not an OLE2 compound file: {e}")))?;
     let data = workbook_stream(&mut ole)?;
     let mut records = 0u64;
     let globals = read_globals(&data, &mut records)?;
 
-    let visible: Vec<&BoundSheet> = globals.sheets.iter().filter(|s| s.visible).collect();
-    let multi_sheet = visible.len() > 1;
-    let mut doc = Document::default();
-    let mut failed = 0usize;
-    // One budget for the workbook, so sheets cannot multiply the cap.
-    let mut slots = 0u64;
-    for sheet in &visible {
+    let mut out = ReadWorkbook { sheets: Vec::new(), unreadable: 0, styles: ViewStyles::plain() };
+    for sheet in globals.sheets.iter().filter(|s| s.visible) {
         let Some(content) = read_sheet(&data, &globals, sheet.offset, &mut records)? else {
             log::warn!("skipping unreadable sheet {:?}", sheet.name);
-            failed += 1;
+            out.unreadable += 1;
             continue;
         };
-        let Some(table) = build_table(content, &mut slots)? else {
-            continue;
-        };
-        if multi_sheet {
-            doc.blocks.push(Block::heading(2, vec![Inline::plain(sheet.name.clone())]));
-        }
-        doc.blocks.push(Block::Table(table));
+        out.sheets.push((sheet.name.clone(), content));
     }
-    if !visible.is_empty() && failed == visible.len() {
-        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
-    }
-    Ok(doc)
+    Ok(out)
 }
 
 /// The BIFF stream: `Workbook` (BIFF8) or `Book` (older BIFF), matched
@@ -840,6 +826,12 @@ fn string_reader<'a>(segs: &'a [&'a [u8]], skip: usize) -> Option<SegReader<'a>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Block, Document};
+
+    fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
+        super::super::parse(bytes)
+    }
+
     use crate::model::{CellSlot, Table, inlines_to_plain_text};
     use std::io::Write;
 

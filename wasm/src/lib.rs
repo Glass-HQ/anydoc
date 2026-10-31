@@ -7,6 +7,7 @@ use wasm_bindgen::prelude::*;
 
 mod document;
 mod typescript;
+mod workbook;
 
 pub use document::*;
 
@@ -122,7 +123,7 @@ pub fn to_document(bytes: &[u8], format: Option<Format>) -> Result<JsValue, JsVa
 /// The thrown value: a JS `Error` carrying the crate's message, with the
 /// variant name on `code` for callers to branch on, and for `needsOcr` the
 /// pages behind it.
-fn convert_error(error: anydoc::ConvertError) -> JsValue {
+pub(crate) fn convert_error(error: anydoc::ConvertError) -> JsValue {
     let thrown = js_sys::Error::new(&error.to_string());
     // Only fails on a non-object target, which `thrown` is not.
     let set = |name: &str, value: JsValue| {

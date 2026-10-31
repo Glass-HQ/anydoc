@@ -4,14 +4,15 @@
 //! materialization, format resolution and date rendering are shared with
 //! the xlsx reader so both containers convert identically.
 
+use super::assemble::ReadWorkbook;
 use super::controls::read_vml_checkboxes;
+use super::styles::ViewStyles;
 use super::xlsx::{
-    CellFormat, MAX_COLS, MAX_ROWS, SHARED_STRINGS_REL, SheetContent, build_table, format_as_text,
+    CellFormat, MAX_COLS, MAX_ROWS, SHARED_STRINGS_REL, SheetContent, format_as_text,
     render_number, resolve_format, sibling_part_name,
 };
 use super::{error_literal, rk_number};
 use crate::error::ConvertError;
-use crate::model::{Block, Document, Inline};
 use crate::package::limits;
 use crate::package::relationships::{read_rels, rel_type, rels_part_for};
 use crate::package::{Package, path};
@@ -42,7 +43,7 @@ const BRT_MERGE_CELL: u16 = 176;
 const BRT_BEGIN_CELL_XFS: u16 = 617;
 const BRT_END_CELL_XFS: u16 = 618;
 
-pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, ConvertError> {
+pub(super) fn read(pkg: &mut Package, wb_part: &str) -> Result<ReadWorkbook, ConvertError> {
     let workbook = pkg.required_part(wb_part)?;
     let (date1904, bundles) = read_workbook(&workbook)?;
     let wb_rels = read_rels(pkg, &rels_part_for(wb_part))?;
@@ -72,41 +73,28 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
         }
     }
 
-    let multi_sheet = sheets.len() > 1;
-    let mut doc = Document::default();
-    let mut failed = 0usize;
-    // One budget for the workbook, so sheets cannot multiply the cap.
-    let mut slots = 0u64;
-    for (name, part) in &sheets {
+    let mut out = ReadWorkbook { sheets: Vec::new(), unreadable: 0, styles: ViewStyles::plain() };
+    for (name, part) in sheets {
         let content =
-            pkg.optional_part(part)?.map(|bytes| read_sheet(&bytes, &shared, &xfs, date1904));
+            pkg.optional_part(&part)?.map(|bytes| read_sheet(&bytes, &shared, &xfs, date1904));
         let mut content = match content {
             Some(Ok(c)) => c,
             Some(Err(e)) if e.is_fatal() => return Err(e),
             Some(Err(e)) => {
                 log::warn!("skipping unreadable sheet {name:?}: {e}");
-                failed += 1;
+                out.unreadable += 1;
                 continue;
             }
             None => {
                 log::warn!("skipping unreadable sheet {name:?}");
-                failed += 1;
+                out.unreadable += 1;
                 continue;
             }
         };
-        content.checkboxes = read_vml_checkboxes(pkg, part)?;
-        let Some(table) = build_table(content, &mut slots)? else {
-            continue;
-        };
-        if multi_sheet {
-            doc.blocks.push(Block::heading(2, vec![Inline::plain(name.clone())]));
-        }
-        doc.blocks.push(Block::Table(table));
+        content.checkboxes = read_vml_checkboxes(pkg, &part)?;
+        out.sheets.push((name, content));
     }
-    if !sheets.is_empty() && failed == sheets.len() {
-        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
-    }
-    Ok(doc)
+    Ok(out)
 }
 
 /// Read an optional binary part under the unified recovery policy: absent or
@@ -460,6 +448,7 @@ impl<'a> Fields<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Block, Document};
     use crate::model::{CellSlot, Table, inlines_to_plain_text};
     use std::io::Write;
 
